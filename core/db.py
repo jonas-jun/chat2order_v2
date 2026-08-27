@@ -52,6 +52,11 @@ def get_owner_by_staff_token(conn, token: str) -> str | None:
     return account["user_id"] if account.get("is_active") else None
 
 
+def get_staff_token(conn, user_id: str) -> str | None:
+    response = conn.table("accounts").select("staff_token").eq("user_id", user_id).execute()
+    return response.data[0].get("staff_token") if response.data else None
+
+
 def rotate_staff_token(conn, user_id: str) -> str:
     token = secrets.token_urlsafe(32)
     conn.table("accounts").update({"staff_token": token}).eq("user_id", user_id).execute()
