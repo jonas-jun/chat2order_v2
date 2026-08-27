@@ -5,6 +5,7 @@ from core import cart as cart_fns
 from core import db as dbfns
 from core.access import get_db, require_staff
 from core.models import CartItem, OrderDraft
+from core.retry import call_with_retry
 from core.session_keys import (
     ADDRESS_CANDIDATES,
     CART,
@@ -201,17 +202,21 @@ if st.button(save_label, key=f"save_order_{form_version}", type="primary", disab
                 field = err["loc"][0] if err["loc"] else "입력값"
                 st.error(f"{field}: {err['msg']}")
         else:
-            if editing_order_id:
-                dbfns.update_order(db, editing_order_id, draft)
-                st.toast("주문을 수정했습니다.")
+            try:
+                if editing_order_id:
+                    call_with_retry(lambda: dbfns.update_order(db, editing_order_id, draft))
+                    st.toast("주문을 수정했습니다.")
+                else:
+                    call_with_retry(lambda: dbfns.create_order(db, broadcast, draft))
+                    st.toast("주문을 저장했습니다.")
+            except Exception:
+                st.error("저장에 실패했습니다. 네트워크 문제일 수 있습니다. 다시 시도해 주세요.")
             else:
-                dbfns.create_order(db, broadcast, draft)
-                st.toast("주문을 저장했습니다.")
-            st.session_state[CART] = []
-            st.session_state.pop(EDITING_ORDER_ID, None)
-            st.session_state[ADDRESS_CANDIDATES] = []
-            st.session_state[ORDER_FORM_VERSION] = form_version + 1
-            st.rerun()
+                st.session_state[CART] = []
+                st.session_state.pop(EDITING_ORDER_ID, None)
+                st.session_state[ADDRESS_CANDIDATES] = []
+                st.session_state[ORDER_FORM_VERSION] = form_version + 1
+                st.rerun()
 
 st.divider()
 st.subheader("내 접수 (최근 20건)")
@@ -271,6 +276,10 @@ else:
             if action_cols[1].button(
                 "이 주문 취소", disabled=is_closed or not confirm_cancel, key=f"cancel_{selected_order.id}"
             ):
-                dbfns.cancel_order(db, selected_order.id)
-                st.toast("주문을 취소했습니다.")
-                st.rerun()
+                try:
+                    call_with_retry(lambda: dbfns.cancel_order(db, selected_order.id))
+                except Exception:
+                    st.error("취소에 실패했습니다. 네트워크 문제일 수 있습니다. 다시 시도해 주세요.")
+                else:
+                    st.toast("주문을 취소했습니다.")
+                    st.rerun()
