@@ -57,6 +57,11 @@ def get_staff_token(conn, user_id: str) -> str | None:
     return response.data[0].get("staff_token") if response.data else None
 
 
+def get_gemini_api_key(conn, user_id: str) -> str | None:
+    response = conn.table("accounts").select("gemini_api_key").eq("user_id", user_id).execute()
+    return response.data[0].get("gemini_api_key") if response.data else None
+
+
 def rotate_staff_token(conn, user_id: str) -> str:
     token = secrets.token_urlsafe(32)
     conn.table("accounts").update({"staff_token": token}).eq("user_id", user_id).execute()

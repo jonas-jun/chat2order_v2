@@ -5,9 +5,18 @@ import streamlit as st
 from core import db as dbfns
 from core.access import get_db, logout, require_admin
 from core.catalog_csv import parse_products_csv
+from core.config import load_config
+from core.export import build_excel, rows_to_frame
+from core.llm import load_prompt_template
 from core.models import ProductInput
-from core.session_keys import CSV_UPLOADER_VERSION, NEW_BROADCAST_PRODUCTS, SELECTED_BROADCAST_ID
+from core.session_keys import (
+    CSV_UPLOADER_VERSION,
+    GEMINI_API_KEY,
+    NEW_BROADCAST_PRODUCTS,
+    SELECTED_BROADCAST_ID,
+)
 from core.settings import KST, get_env
+from core.zipcode import fill_zip_codes
 
 db = get_db()
 user_id = require_admin(db)
@@ -81,7 +90,7 @@ if selected_id:
         else:
             st.warning("아직 직원 토큰이 없습니다. 사이드바에서 먼저 발급하세요.")
 
-        action_cols = st.columns(3)
+        action_cols = st.columns(2)
         if broadcast.status == "open":
             if action_cols[0].button("🔒 마감"):
                 dbfns.set_broadcast_status(db, broadcast.id, "closed")
@@ -91,11 +100,92 @@ if selected_id:
                 dbfns.set_broadcast_status(db, broadcast.id, "open")
                 st.rerun()
 
-        action_cols[1].button(
-            "📮 우편번호 채우기 → 엑셀 다운로드", disabled=True, help="Phase 4 에서 구현 예정"
-        )
-
         order_count = counts.get(broadcast.id, 0)
+
+        with st.expander("📮 우편번호 채우기 → 엑셀 다운로드"):
+            if order_count == 0:
+                st.info("접수된 주문이 없습니다.")
+            else:
+                config = load_config()
+                refetch_all = st.checkbox(
+                    "전체 재조회 (이미 채워진 우편번호도 다시 조회)", key=f"refetch_all_{broadcast.id}"
+                )
+                if st.button("실행", key=f"run_export_{broadcast.id}"):
+                    order_rows = dbfns.list_order_rows(db, broadcast.id, status="received")
+                    targets = order_rows if refetch_all else [o for o in order_rows if not o.zip_code]
+
+                    gemini_key = st.session_state.get(GEMINI_API_KEY) or ""
+                    if not gemini_key:
+                        st.warning(
+                            "Gemini API 키가 없어 LLM 정제를 생략합니다. JUSO 직접 조회만 시도합니다."
+                        )
+
+                    if targets:
+                        prompt_template = load_prompt_template(config["prompts"]["address_to_search"])
+                        progress_bar = st.progress(0.0)
+                        status_box = st.status("우편번호 조회 중입니다", expanded=True)
+                        counts_by_stage = {"direct": 0, "refined": 0, "failed": 0}
+
+                        results = fill_zip_codes(
+                            targets,
+                            juso_api_key=get_env("JUSO_API_KEY"),
+                            gemini_api_key=gemini_key,
+                            model=config["gemini"]["model"],
+                            temperature=config["gemini"]["temperature"],
+                            prompt_template=prompt_template,
+                            progress_cb=lambda done, total: progress_bar.progress(min(done / total, 1.0)),
+                        )
+                        for order in targets:
+                            result = results[order.id]
+                            dbfns.update_order_zip(db, order.id, result.zip_code, result.search_address)
+                            counts_by_stage[result.stage] += 1
+                            order.zip_code = result.zip_code or order.zip_code
+                            order.search_address = result.search_address or order.search_address
+
+                        status_box.update(
+                            label=(
+                                f"🎉 우편번호 조회 완료! (직접 {counts_by_stage['direct']}건 · "
+                                f"정제 {counts_by_stage['refined']}건 · 실패 {counts_by_stage['failed']}건)"
+                            ),
+                            state="complete",
+                        )
+                        metric_cols = st.columns(3)
+                        metric_cols[0].metric("직접 조회 성공", counts_by_stage["direct"])
+                        metric_cols[1].metric("LLM 정제 후 성공", counts_by_stage["refined"])
+                        metric_cols[2].metric("실패", counts_by_stage["failed"])
+
+                    live_output = config["live_output"]
+                    frame = rows_to_frame(order_rows, config["live_output_columns"], live_output["row_mode"])
+                    review_orders = [o for o in order_rows if not o.zip_code]
+                    review_frame = (
+                        rows_to_frame(
+                            review_orders,
+                            {
+                                "주문번호": "order_number",
+                                "수령자": "customer_name",
+                                "전화번호": "phone",
+                                "주소": "full_address",
+                                "접수직원": "staff_name",
+                            },
+                            "order",
+                        )
+                        if review_orders
+                        else None
+                    )
+                    excel_bytes = build_excel(
+                        frame, review_frame, live_output["sheet_name"], live_output["review_sheet_name"]
+                    )
+                    file_name = live_output["file_name"].format(
+                        title=broadcast.title,
+                        date=broadcast.scheduled_at.astimezone(KST).strftime("%Y%m%d"),
+                    )
+                    st.download_button(
+                        "⬇️ 엑셀 다운로드",
+                        data=excel_bytes,
+                        file_name=file_name,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key=f"download_excel_{broadcast.id}",
+                    )
         with st.expander("상품 CSV 교체 (주문이 없을 때만 가능)"):
             if order_count > 0:
                 st.info("이미 접수된 주문이 있어 상품을 교체할 수 없습니다.")

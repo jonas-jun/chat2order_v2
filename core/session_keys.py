@@ -5,6 +5,7 @@
 
 LOGGED_IN_USER = "c2o_live_logged_in_user"
 STAFF_NICKNAME = "c2o_live_staff_nickname"
+GEMINI_API_KEY = "c2o_live_gemini_api_key"
 
 SELECTED_BROADCAST_ID = "c2o_live_selected_broadcast_id"
 NEW_BROADCAST_PRODUCTS = "c2o_live_new_broadcast_products"

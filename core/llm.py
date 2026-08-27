@@ -1,8 +1,13 @@
 import json
 import re
+from pathlib import Path
 
 from google import genai
 from google.genai import types
+
+
+def load_prompt_template(path: str | Path) -> str:
+    return Path(path).read_text(encoding="utf-8")
 
 
 def _gemini_client(api_key: str):

@@ -11,8 +11,8 @@ import streamlit as st
 from supabase import create_client
 
 from core.auth import COOKIE_NAME, DEFAULT_TTL_SECONDS, issue_token, verify_token
-from core.db import authenticate_admin, get_owner_by_staff_token
-from core.session_keys import LOGGED_IN_USER, STAFF_NICKNAME
+from core.db import authenticate_admin, get_gemini_api_key, get_owner_by_staff_token
+from core.session_keys import GEMINI_API_KEY, LOGGED_IN_USER, STAFF_NICKNAME
 from core.settings import get_env
 
 STAFF_NICKNAME_COOKIE = "c2o_live_staff"
@@ -44,11 +44,18 @@ def require_admin(db) -> str:
             st.session_state[LOGGED_IN_USER] = restored
 
     if LOGGED_IN_USER in st.session_state:
+        _ensure_gemini_key_cached(db, st.session_state[LOGGED_IN_USER])
         return st.session_state[LOGGED_IN_USER]
 
     _render_login_form(db, cookie_manager, secret)
     st.stop()
     raise RuntimeError("unreachable")  # st.stop() 이 스크립트 실행을 여기서 끝낸다
+
+
+def _ensure_gemini_key_cached(db, user_id: str) -> None:
+    """엑셀 추출 시 주소 정제에 쓸 Gemini 키를 session_state 에 한 번만 읽어 둔다."""
+    if GEMINI_API_KEY not in st.session_state and db is not None:
+        st.session_state[GEMINI_API_KEY] = get_gemini_api_key(db, user_id)
 
 
 def _render_login_form(db, cookie_manager: stx.CookieManager, secret: str) -> None:
@@ -92,8 +99,16 @@ def logout() -> None:
         pass
 
 
-def require_staff(db) -> tuple[str, str]:
-    """URL 토큰으로 소유자를 확정하고, 닉네임 쿠키/입력을 받아 (owner_user_id, staff_name)."""
+def require_staff(db, allow_admin_cookie: bool = False) -> tuple[str, str]:
+    """URL 토큰으로 소유자를 확정하고, 닉네임 쿠키/입력을 받아 (owner_user_id, staff_name).
+
+    ``allow_admin_cookie=True`` 면 관리자 로그인 쿠키만으로도 접근을 허용한다
+    (검색 페이지 §4.5 전용. 주문 입력 페이지는 항상 토큰이 필요하다).
+    """
+    if allow_admin_cookie and LOGGED_IN_USER in st.session_state:
+        admin_user = st.session_state[LOGGED_IN_USER]
+        return admin_user, f"관리자({admin_user})"
+
     token = st.query_params.get("t")
     owner = get_owner_by_staff_token(db, token) if db is not None else None
     if not owner:

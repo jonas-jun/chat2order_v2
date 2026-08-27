@@ -1,0 +1,24 @@
+gemini: # 엑셀 추출 시 주소 정제 전용 (v1 과 동일 값)
+  model: "gemini-3.1-flash-lite"
+  temperature: 0.1
+prompts:
+  address_to_search: "prompts/address_to_search.txt"
+
+live_output:
+  sheet_name: "주문내역"
+  review_sheet_name: "검토필요"
+  file_name: "{title}_{date}.xlsx"
+  row_mode: item # item(상품 1행, 기본) | order(주문 1행, 상품/수량을 한 셀에 결합)
+live_output_columns: # 출력명: 원본 필드명 (null 이면 빈 컬럼)
+  주문번호: order_number
+  상품명: product_name
+  옵션명: option_name
+  수량: quantity
+  단가: unit_price
+  채팅명: chat_name
+  수령자: customer_name
+  전화번호: phone
+  주소: full_address
+  우편번호: zip_code
+  접수직원: staff_name
+  접수시각: created_at_kst
