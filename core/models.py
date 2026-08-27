@@ -10,6 +10,14 @@ from core.textutil import format_phone_number
 from core.textutil import phone_digits as _phone_digits
 
 
+class AddressCandidate(BaseModel):
+    """JUSO 주소 검색 결과 후보 1건."""
+
+    road_addr: str
+    jibun_addr: str | None = None
+    zip_code: str | None = None
+
+
 class Broadcast(BaseModel):
     id: str
     owner_user_id: str
