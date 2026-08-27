@@ -1,0 +1,14 @@
+streamlit==1.59.1
+extra-streamlit-components==0.1.81
+numpy==2.4.6
+pandas==3.0.3
+pyarrow==23.0.1
+pydantic==2.13.4
+openpyxl==3.1.5
+pyyaml==6.0.3
+supabase==2.31.0
+google-genai==2.11.0
+requests
+
+# 테스트
+pytest==8.3.5

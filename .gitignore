@@ -1,0 +1,12 @@
+.env
+.venv
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.streamlit/secrets.toml
+.streamlit/secret.toml
+working/
+instructions/
+*.xlsx
+*.csv
+!tests/fixtures/*.csv
