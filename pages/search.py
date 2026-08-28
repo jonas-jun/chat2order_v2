@@ -12,7 +12,7 @@ from core.zipcode import fill_zip_codes
 _TRIGGER = "c2o_live_search_trigger"
 
 db = get_db()
-owner, staff_name = require_staff(db, allow_admin_cookie=True)
+owner, _ = require_staff(db, allow_admin_cookie=True, require_nickname=False)
 
 st.markdown("## 🔎 주문 검색")
 

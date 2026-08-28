@@ -99,11 +99,16 @@ def logout() -> None:
         pass
 
 
-def require_staff(db, allow_admin_cookie: bool = False) -> tuple[str, str]:
+def require_staff(
+    db, allow_admin_cookie: bool = False, require_nickname: bool = True
+) -> tuple[str, str]:
     """URL 토큰으로 소유자를 확정하고, 닉네임 쿠키/입력을 받아 (owner_user_id, staff_name).
 
     ``allow_admin_cookie=True`` 면 관리자 로그인 쿠키만으로도 접근을 허용한다
     (검색 페이지 §4.5 전용. 주문 입력 페이지는 항상 토큰이 필요하다).
+
+    ``require_nickname=False`` 면 토큰만 검증하고 닉네임 입력을 건너뛴다. 검색 페이지처럼
+    접수자 닉네임을 실제로 쓰지 않는 화면에서 사용한다 (staff_name 은 "" 로 반환).
     """
     if allow_admin_cookie and LOGGED_IN_USER in st.session_state:
         admin_user = st.session_state[LOGGED_IN_USER]
@@ -115,6 +120,9 @@ def require_staff(db, allow_admin_cookie: bool = False) -> tuple[str, str]:
         st.error("유효하지 않거나 만료된 링크입니다. 관리자에게 새 링크를 요청하세요.")
         st.stop()
         raise RuntimeError("unreachable")
+
+    if not require_nickname:
+        return owner, ""
 
     cookie_manager = stx.CookieManager(key=_STAFF_COOKIE_MANAGER_KEY)
 
