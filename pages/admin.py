@@ -45,6 +45,11 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
+    sidebar_token = dbfns.get_staff_token(db, user_id)
+    if sidebar_token:
+        st.caption("주문 검색 링크 (방송과 무관, 토큰당 고정)")
+        st.code(_public_url(f"/search?t={sidebar_token}"), language=None)
+
     st.caption("링크가 유출된 경우에만 재발급하세요. 기존 링크가 즉시 무효화됩니다.")
     confirm_rotate = st.checkbox("정말 재발급합니다")
     if st.button("🔑 직원 토큰 재발급", disabled=not confirm_rotate, width="stretch"):
@@ -91,7 +96,6 @@ if selected_id:
         token = dbfns.get_staff_token(db, user_id)
         if token:
             st.code(_public_url(f"/order?b={broadcast.id}&t={token}"), language=None)
-            st.code(_public_url(f"/search?t={token}"), language=None)
         else:
             st.warning("아직 직원 토큰이 없습니다. 사이드바에서 먼저 발급하세요.")
 
