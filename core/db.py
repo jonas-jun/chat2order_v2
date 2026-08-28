@@ -125,15 +125,14 @@ def list_broadcasts(conn, owner: str, limit: int = 20) -> list[Broadcast]:
 def count_orders_by_broadcast(conn, broadcast_ids: list[str]) -> dict[str, int]:
     if not broadcast_ids:
         return {}
-    response = (
-        conn.table("live_orders")
+    rows = _fetch_all(
+        lambda: conn.table("live_orders")
         .select("broadcast_id")
         .in_("broadcast_id", broadcast_ids)
         .eq("status", "received")
-        .execute()
     )
     counts = {bid: 0 for bid in broadcast_ids}
-    for row in response.data:
+    for row in rows:
         counts[row["broadcast_id"]] = counts.get(row["broadcast_id"], 0) + 1
     return counts
 
@@ -150,29 +149,37 @@ def set_broadcast_status(conn, broadcast_id: str, status: str) -> None:
     conn.table("live_broadcasts").update(update).eq("id", broadcast_id).execute()
 
 
-# PostgREST 는 한 응답에 기본 1000행까지만 반환하므로, 상품이 1000개를 넘으면
-# range 로 페이지를 이어 받아 전부 가져온다. (재고 카탈로그는 1000 옵션 초과 가능)
+# PostgREST 는 한 응답에 기본 1000행까지만 반환한다. 결과가 이를 넘을 수 있는
+# 조회(상품 카탈로그, 방송 전체 주문·아이템)는 range 로 페이지를 이어 받아 전부
+# 가져온다. 명시적 limit 이 있는 조회(검색·최근 20건)는 의도된 상한이라 제외.
 _PAGE_SIZE = 1000
 
 
-def list_products(conn, broadcast_id: str, active_only: bool = True) -> list[Product]:
+def _fetch_all(make_query) -> list[dict]:
+    """1000행 상한을 넘겨 전 행을 가져온다.
+
+    ``make_query`` 는 필터·정렬까지 적용된 새 쿼리를 반환하는 콜러블이어야 한다
+    (``range``/``execute`` 전 상태). 페이지마다 새 쿼리에 ``range`` 를 적용한다.
+    """
     rows: list[dict] = []
     start = 0
     while True:
-        query = conn.table("live_products").select("*").eq("broadcast_id", broadcast_id)
-        if active_only:
-            query = query.eq("is_active", True)
-        page = (
-            query.order("sort_order", desc=False)
-            .range(start, start + _PAGE_SIZE - 1)
-            .execute()
-            .data
-        )
+        page = make_query().range(start, start + _PAGE_SIZE - 1).execute().data
         rows.extend(page)
         if len(page) < _PAGE_SIZE:
             break
         start += _PAGE_SIZE
-    return [Product(**row) for row in rows]
+    return rows
+
+
+def list_products(conn, broadcast_id: str, active_only: bool = True) -> list[Product]:
+    def make_query():
+        query = conn.table("live_products").select("*").eq("broadcast_id", broadcast_id)
+        if active_only:
+            query = query.eq("is_active", True)
+        return query.order("sort_order", desc=False)
+
+    return [Product(**row) for row in _fetch_all(make_query)]
 
 
 def replace_products(conn, broadcast_id: str, products: list[ProductInput]) -> None:
@@ -344,14 +351,12 @@ def search_orders(
 
 
 def list_order_rows(conn, broadcast_id: str, status: str = "received") -> list[OrderRow]:
-    orders = (
-        conn.table("live_orders")
+    orders = _fetch_all(
+        lambda: conn.table("live_orders")
         .select("*")
         .eq("broadcast_id", broadcast_id)
         .eq("status", status)
         .order("created_at", desc=False)
-        .execute()
-        .data
     )
     return _attach_items(conn, orders)
 
@@ -360,7 +365,11 @@ def _attach_items(conn, orders: list[dict]) -> list[OrderRow]:
     if not orders:
         return []
     order_ids = [o["id"] for o in orders]
-    items = conn.table("live_order_items").select("*").in_("order_id", order_ids).execute().data
+    # 아이템 합계는 주문 수보다 많아 1000행을 넘길 수 있으므로 페이지네이션한다
+    # (예: 검색 200건 × 여러 아이템). 그러면 주문에서 상품이 누락되지 않는다.
+    items = _fetch_all(
+        lambda: conn.table("live_order_items").select("*").in_("order_id", order_ids)
+    )
     items_by_order: dict[str, list[dict]] = {}
     for item in items:
         items_by_order.setdefault(item["order_id"], []).append(item)

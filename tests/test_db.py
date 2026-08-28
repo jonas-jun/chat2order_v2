@@ -107,6 +107,31 @@ def test_count_orders_by_broadcast(fake):
     assert counts[broadcast_id] == 1
 
 
+def test_order_queries_return_more_than_one_page(fake):
+    # PostgREST 기본 1000행 상한을 넘는 주문·아이템도 전부 받아야 한다.
+    # 각 주문에 아이템 2개 → 1200주문이면 아이템은 2400행(1000 초과).
+    broadcast_id = _seed_broadcast(fake)
+    broadcast = db.get_broadcast(fake, broadcast_id)
+    for _ in range(1200):
+        db.create_order(
+            fake,
+            broadcast,
+            _draft(
+                items=[
+                    CartItem(product_name="가디건", option_name="그레이", unit_price=78000, quantity=1),
+                    CartItem(product_name="스커트", option_name="단일", unit_price=129000, quantity=1),
+                ]
+            ),
+        )
+
+    rows = db.list_order_rows(fake, broadcast_id)
+    assert len(rows) == 1200  # 주문 누락 없음
+    assert all(len(r.items) == 2 for r in rows)  # 아이템 누락 없음
+
+    counts = db.count_orders_by_broadcast(fake, [broadcast_id])
+    assert counts[broadcast_id] == 1200  # 카운트 과소 집계 없음
+
+
 def test_set_broadcast_status_closed_sets_closed_at(fake):
     broadcast_id = _seed_broadcast(fake)
     db.set_broadcast_status(fake, broadcast_id, "closed")
