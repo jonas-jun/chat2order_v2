@@ -47,8 +47,8 @@ with st.sidebar:
     st.divider()
     sidebar_token = dbfns.get_staff_token(db, user_id)
     if sidebar_token:
-        st.caption("주문 검색 링크 (방송과 무관, 토큰당 고정)")
-        st.code(_public_url(f"/search?t={sidebar_token}"), language=None)
+        st.caption("주문 검색 (방송과 무관, 토큰당 고정)")
+        st.markdown(f"[🔎 주문 검색 열기]({_public_url(f'/search?t={sidebar_token}')})")
 
     st.caption("링크가 유출된 경우에만 재발급하세요. 기존 링크가 즉시 무효화됩니다.")
     confirm_rotate = st.checkbox("정말 재발급합니다")
