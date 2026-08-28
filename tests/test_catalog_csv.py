@@ -2,7 +2,11 @@ import io
 
 import pytest
 
-from core.catalog_csv import parse_price, parse_products_csv
+from core.catalog_csv import (
+    parse_inventory_products,
+    parse_price,
+    parse_products_csv,
+)
 
 
 def _csv_bytes(text: str) -> io.BytesIO:
@@ -73,3 +77,52 @@ def test_cp949_encoded_csv_is_read():
     csv_text = "상품명,옵션내용,판매가\n가디건,그레이,78000\n"
     products = parse_products_csv(io.BytesIO(csv_text.encode("cp949")))
     assert products[0].product_name == "가디건"
+
+
+# --- parse_inventory_products (재고 CSV: 상품명·옵션내용·판매단가) ---
+
+
+def test_inventory_groups_options_by_product_and_attaches_price():
+    csv_text = (
+        "상품명,옵션내용,판매단가\n"
+        "프리미엄H힐,블랙,79000\n"
+        "프리미엄H힐,화이트,79000\n"
+        "니트,그레이,55000\n"
+    )
+    products = parse_inventory_products(_csv_bytes(csv_text))
+    assert [(p.product_name, p.option_name, p.price) for p in products] == [
+        ("프리미엄H힐", "블랙", 79000),
+        ("프리미엄H힐", "화이트", 79000),
+        ("니트", "그레이", 55000),
+    ]
+
+
+def test_inventory_keeps_zero_price_options():
+    csv_text = "상품명,옵션내용,판매단가\n멍참,그레이,10000\n멍참,블랙,0\n"
+    products = parse_inventory_products(_csv_bytes(csv_text))
+    assert [(p.option_name, p.price) for p in products] == [("그레이", 10000), ("블랙", 0)]
+
+
+def test_inventory_blank_price_becomes_zero():
+    csv_text = "상품명,옵션내용,판매단가\n니트,그레이,\n"
+    products = parse_inventory_products(_csv_bytes(csv_text))
+    assert products[0].price == 0
+
+
+def test_inventory_dedups_options_within_product_keeping_first_price():
+    csv_text = "상품명,옵션내용,판매단가\n니트,그레이,55000\n니트,그레이,99000\n"
+    products = parse_inventory_products(_csv_bytes(csv_text))
+    assert len(products) == 1
+    assert products[0].price == 55000
+
+
+def test_inventory_drops_blank_option_rows_and_products_without_options():
+    csv_text = "상품명,옵션내용,판매단가\n니트,,55000\n,,\n힐,블랙,79000\n"
+    products = parse_inventory_products(_csv_bytes(csv_text))
+    assert [(p.product_name, p.option_name) for p in products] == [("힐", "블랙")]
+
+
+def test_inventory_missing_column_is_rejected():
+    csv_text = "상품명,옵션내용,판매가\n니트,그레이,55000\n"
+    with pytest.raises(ValueError, match="판매단가"):
+        parse_inventory_products(_csv_bytes(csv_text))

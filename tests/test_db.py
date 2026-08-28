@@ -85,6 +85,20 @@ def test_create_broadcast_and_list_broadcasts(fake):
     assert [p.product_name for p in products] == ["가디건", "스커트"]
 
 
+def test_list_products_returns_more_than_one_page(fake):
+    # PostgREST 기본 1000행 상한을 넘겨도 range 페이지네이션으로 전부 받아야 한다.
+    products = [
+        ProductInput(product_name=f"상품{i:04d}", option_name="단일상품", price=1000)
+        for i in range(1138)
+    ]
+    broadcast_id = db.create_broadcast(
+        fake, OWNER, "대량 카탈로그", datetime(2026, 8, 30, 20, 0, tzinfo=KST), None, products
+    )
+    loaded = db.list_products(fake, broadcast_id)
+    assert len(loaded) == 1138
+    assert [p.sort_order for p in loaded] == list(range(1138))
+
+
 def test_count_orders_by_broadcast(fake):
     broadcast_id = _seed_broadcast(fake)
     broadcast = db.get_broadcast(fake, broadcast_id)

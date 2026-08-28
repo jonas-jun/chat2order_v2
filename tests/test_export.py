@@ -14,6 +14,7 @@ COLUMNS_MAP = {
     "옵션명": "option_name",
     "수량": "quantity",
     "단가": "unit_price",
+    "주문금액": "amount",
     "수령자": "customer_name",
     "주소": "full_address",
     "우편번호": "zip_code",
@@ -53,12 +54,20 @@ def test_rows_to_frame_item_mode_expands_one_row_per_item():
     assert list(frame["주문번호"]) == ["20260830001", "20260830001"]
 
 
+def test_rows_to_frame_item_mode_computes_order_amount():
+    frame = rows_to_frame([_order(items=_items())], COLUMNS_MAP, row_mode="item")
+    # 주문금액 = 단가 × 수량
+    assert list(frame["주문금액"]) == [78000 * 2, 129000 * 1]
+
+
 def test_rows_to_frame_order_mode_collapses_items_into_one_row():
     frame = rows_to_frame([_order(items=_items())], COLUMNS_MAP, row_mode="order")
     assert len(frame) == 1
     assert frame.iloc[0]["상품명"] == "가디건 그레이 x2; 스커트 단일 x1"
     assert frame.iloc[0]["수량"] == 3
     assert frame.iloc[0]["단가"] is None
+    # 주문 1행 모드의 주문금액은 전체 합계
+    assert frame.iloc[0]["주문금액"] == 78000 * 2 + 129000 * 1
 
 
 def test_rows_to_frame_uses_full_address():

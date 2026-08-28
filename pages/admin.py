@@ -222,7 +222,9 @@ with st.form("new_broadcast_form"):
     scheduled_time = time_col.time_input("방송 일시 (시각)", value=time(20, 0))
     memo = st.text_area("메모 (선택)")
     uploaded = st.file_uploader(
-        "상품 CSV (상품명, 옵션내용, 판매가)", type="csv", key=f"new_csv_{uploader_version}"
+        "상품 CSV (재고 파일 stk_forInOut_*.csv 또는 상품명·옵션내용·판매가)",
+        type="csv",
+        key=f"new_csv_{uploader_version}",
     )
     submitted = st.form_submit_button("미리보기", type="primary")
 

@@ -37,6 +37,8 @@ class Query:
         self.order_col = None
         self.order_desc = False
         self.limit_n = None
+        self.range_from = None
+        self.range_to = None
         self.count_mode = None
 
     def select(self, cols="*", count=None):
@@ -63,6 +65,12 @@ class Query:
 
     def limit(self, n):
         self.limit_n = n
+        return self
+
+    def range(self, from_, to):
+        # PostgREST 의 range 는 양끝 포함(inclusive) 이다.
+        self.range_from = from_
+        self.range_to = to
         return self
 
     def execute(self) -> Response:
@@ -109,6 +117,8 @@ class Query:
                 matched, key=lambda r: r.get(self.order_col), reverse=self.order_desc
             )
         count = len(matched) if self.count_mode == "exact" else None
+        if self.range_from is not None:
+            matched = matched[self.range_from : self.range_to + 1]
         if self.limit_n is not None:
             matched = matched[: self.limit_n]
         return Response([dict(r) for r in matched], count=count)

@@ -150,12 +150,29 @@ def set_broadcast_status(conn, broadcast_id: str, status: str) -> None:
     conn.table("live_broadcasts").update(update).eq("id", broadcast_id).execute()
 
 
+# PostgREST 는 한 응답에 기본 1000행까지만 반환하므로, 상품이 1000개를 넘으면
+# range 로 페이지를 이어 받아 전부 가져온다. (재고 카탈로그는 1000 옵션 초과 가능)
+_PAGE_SIZE = 1000
+
+
 def list_products(conn, broadcast_id: str, active_only: bool = True) -> list[Product]:
-    query = conn.table("live_products").select("*").eq("broadcast_id", broadcast_id)
-    if active_only:
-        query = query.eq("is_active", True)
-    response = query.order("sort_order", desc=False).execute()
-    return [Product(**row) for row in response.data]
+    rows: list[dict] = []
+    start = 0
+    while True:
+        query = conn.table("live_products").select("*").eq("broadcast_id", broadcast_id)
+        if active_only:
+            query = query.eq("is_active", True)
+        page = (
+            query.order("sort_order", desc=False)
+            .range(start, start + _PAGE_SIZE - 1)
+            .execute()
+            .data
+        )
+        rows.extend(page)
+        if len(page) < _PAGE_SIZE:
+            break
+        start += _PAGE_SIZE
+    return [Product(**row) for row in rows]
 
 
 def replace_products(conn, broadcast_id: str, products: list[ProductInput]) -> None:

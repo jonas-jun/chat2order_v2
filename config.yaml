@@ -9,12 +9,16 @@ live_output:
   review_sheet_name: "검토필요"
   file_name: "{title}_{date}.xlsx"
   row_mode: item # item(상품 1행, 기본) | order(주문 1행, 상품/수량을 한 셀에 결합)
-live_output_columns: # 출력명: 원본 필드명 (null 이면 빈 컬럼)
+# 출력명: 원본 필드명 (null 이면 빈 컬럼).
+# v1(chat2order) 최종 order xlsx 컬럼·순서를 그대로 따르고, v2 운영에 필요한
+# 접수직원·접수시각만 뒤에 덧붙인다. (주소는 상세주소까지 합친 full_address)
+live_output_columns:
   주문번호: order_number
   상품명: product_name
   옵션명: option_name
   수량: quantity
   단가: unit_price
+  주문금액: amount # 단가 × 수량
   채팅명: chat_name
   수령자: customer_name
   전화번호: phone

@@ -30,11 +30,22 @@ def _flatten(order: OrderRow, row_mode: str) -> list[dict]:
                 "option_name": None,
                 "quantity": sum(item.quantity for item in order.items),
                 "unit_price": None,
+                # 주문 1행 모드에서는 단가가 섞이므로 전체 주문 금액 합계를 넣는다.
+                "amount": sum(item.unit_price * item.quantity for item in order.items),
             }
         ]
 
     if not order.items:
-        return [{**base, "product_name": None, "option_name": None, "quantity": None, "unit_price": None}]
+        return [
+            {
+                **base,
+                "product_name": None,
+                "option_name": None,
+                "quantity": None,
+                "unit_price": None,
+                "amount": None,
+            }
+        ]
 
     return [
         {
@@ -43,6 +54,7 @@ def _flatten(order: OrderRow, row_mode: str) -> list[dict]:
             "option_name": item.option_name,
             "quantity": item.quantity,
             "unit_price": item.unit_price,
+            "amount": item.unit_price * item.quantity,  # 주문금액 = 단가 × 수량
         }
         for item in order.items
     ]
