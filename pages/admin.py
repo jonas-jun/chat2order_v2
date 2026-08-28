@@ -7,6 +7,7 @@ from core.access import get_db, logout, require_admin
 from core.catalog_csv import parse_products_csv
 from core.config import load_config
 from core.export import build_excel, rows_to_frame
+from core.links import public_url
 from core.llm import load_prompt_template
 from core.models import ProductInput
 from core.session_keys import (
@@ -29,8 +30,12 @@ st.markdown(
 
 
 def _public_url(path: str) -> str:
-    base = get_env("LIVE_PUBLIC_URL").rstrip("/")
-    return f"{base}{path}" if base else path
+    # LIVE_PUBLIC_URL 이 없으면 현재 접속 주소의 origin 을 붙여 full URL 로 보여준다.
+    try:
+        current_url = st.context.url
+    except Exception:
+        current_url = None
+    return public_url(path, get_env("LIVE_PUBLIC_URL"), current_url)
 
 
 with st.sidebar:
