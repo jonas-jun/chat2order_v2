@@ -7,7 +7,7 @@ prompts:
 live_output:
   sheet_name: "주문내역"
   review_sheet_name: "검토필요"
-  file_name: "{title}_{date}.xlsx"
+  file_name: "{title}_주문내역.xlsx" # {title} 은 라방 ID(YYYYMMDD-HHMM)
   row_mode: item # item(상품 1행, 기본) | order(주문 1행, 상품/수량을 한 셀에 결합)
 # 출력명: 원본 필드명 (null 이면 빈 컬럼).
 # v1(chat2order) 최종 order xlsx 컬럼·순서를 그대로 따르고, v2 운영에 필요한

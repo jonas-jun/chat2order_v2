@@ -106,9 +106,8 @@ def main() -> int:
     broadcast_id = dbfns.create_broadcast(
         conn,
         owner,
-        "[LOAD TEST] 삭제 예정",
         datetime.now(KST),
-        "live_load_test.py 자동 생성 — 정상 종료 시 자동 삭제됨",
+        "[LOAD TEST] 삭제 예정 — live_load_test.py 자동 생성, 정상 종료 시 자동 삭제됨",
         [ProductInput(product_name="부하테스트상품", option_name="단일상품", price=1000)],
     )
     broadcast = dbfns.get_broadcast(conn, broadcast_id)

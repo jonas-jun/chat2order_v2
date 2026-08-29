@@ -181,10 +181,7 @@ if selected_id:
                     excel_bytes = build_excel(
                         frame, review_frame, live_output["sheet_name"], live_output["review_sheet_name"]
                     )
-                    file_name = live_output["file_name"].format(
-                        title=broadcast.title,
-                        date=broadcast.scheduled_at.astimezone(KST).strftime("%Y%m%d"),
-                    )
+                    file_name = live_output["file_name"].format(title=broadcast.title)
                     st.download_button(
                         "⬇️ 엑셀 다운로드",
                         data=excel_bytes,
@@ -222,10 +219,10 @@ st.subheader("➕ 새 방송 만들기")
 uploader_version = st.session_state.setdefault(CSV_UPLOADER_VERSION, 0)
 
 with st.form("new_broadcast_form"):
-    title = st.text_input("제목 (라방 닉네임)")
     date_col, time_col = st.columns(2)
     scheduled_date = date_col.date_input("방송 일시 (날짜)")
     scheduled_time = time_col.time_input("방송 일시 (시각)", value=time(20, 0))
+    st.caption("라방 ID 는 일정으로 자동 생성됩니다 (예: 20260829-2000).")
     memo = st.text_area("메모 (선택)")
     uploaded = st.file_uploader(
         "상품 CSV (재고 파일 stk_forInOut_*.csv 또는 상품명·옵션내용·판매가)",
@@ -235,9 +232,7 @@ with st.form("new_broadcast_form"):
     submitted = st.form_submit_button("미리보기", type="primary")
 
 if submitted:
-    if not title.strip():
-        st.error("제목을 입력하세요.")
-    elif uploaded is None:
+    if uploaded is None:
         st.error("상품 CSV 를 업로드하세요.")
     else:
         try:
@@ -250,7 +245,6 @@ if submitted:
             else:
                 scheduled_at = datetime.combine(scheduled_date, scheduled_time, tzinfo=KST)
                 st.session_state[NEW_BROADCAST_PRODUCTS] = {
-                    "title": title.strip(),
                     "scheduled_at": scheduled_at.isoformat(),
                     "memo": memo.strip() or None,
                     "products": [p.model_dump() for p in products],
@@ -272,7 +266,6 @@ if preview:
         broadcast_id = dbfns.create_broadcast(
             db,
             user_id,
-            preview["title"],
             datetime.fromisoformat(preview["scheduled_at"]),
             preview["memo"],
             [ProductInput(**p) for p in products_preview],
