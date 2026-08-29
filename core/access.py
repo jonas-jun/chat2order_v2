@@ -8,12 +8,12 @@ from datetime import datetime, timedelta, timezone
 
 import extra_streamlit_components as stx
 import streamlit as st
-from supabase import create_client
 
 from core.auth import COOKIE_NAME, DEFAULT_TTL_SECONDS, issue_token, verify_token
 from core.db import authenticate_admin, get_gemini_api_key, get_owner_by_staff_token
 from core.session_keys import GEMINI_API_KEY, LOGGED_IN_USER, STAFF_NICKNAME
 from core.settings import get_env
+from core.supabase_client import create_supabase_client
 
 STAFF_NICKNAME_COOKIE = "c2o_live_staff"
 STAFF_NICKNAME_TTL_SECONDS = 7 * 24 * 3600  # 7일
@@ -26,7 +26,7 @@ _STAFF_COOKIE_MANAGER_KEY = "staff_cookie_manager"
 def get_db():
     url = get_env("SUPABASE_URL")
     key = get_env("SUPABASE_KEY")
-    return create_client(url, key) if url and key else None
+    return create_supabase_client(url, key) if url and key else None
 
 
 def get_admin_cookie_manager() -> stx.CookieManager:
