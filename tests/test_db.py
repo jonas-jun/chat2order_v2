@@ -23,7 +23,7 @@ def _seed_broadcast(fake, scheduled_at=None):
         ProductInput(product_name="가디건", option_name="그레이", price=78000),
         ProductInput(product_name="스커트", option_name="단일", price=129000),
     ]
-    broadcast_id = db.create_broadcast(fake, OWNER, "8/30 라방", scheduled_at, None, products)
+    broadcast_id = db.create_broadcast(fake, OWNER, scheduled_at, None, products)
     return broadcast_id
 
 
@@ -79,10 +79,24 @@ def test_create_broadcast_and_list_broadcasts(fake):
     broadcasts = db.list_broadcasts(fake, OWNER)
     assert len(broadcasts) == 1
     assert broadcasts[0].id == broadcast_id
-    assert broadcasts[0].title == "8/30 라방"
+    assert broadcasts[0].title == "20260830-2000"
 
     products = db.list_products(fake, broadcast_id)
     assert [p.product_name for p in products] == ["가디건", "스커트"]
+
+
+def test_create_broadcast_title_versions_on_same_schedule(fake):
+    at = datetime(2026, 8, 30, 20, 0, tzinfo=KST)
+    products = [ProductInput(product_name="가디건", option_name="그레이", price=78000)]
+
+    db.create_broadcast(fake, OWNER, at, None, products)
+    db.create_broadcast(fake, OWNER, at, None, products)
+    db.create_broadcast(fake, OWNER, at, None, products)
+    # 다른 시각은 접미사 없이 base ID 를 그대로 받는다.
+    db.create_broadcast(fake, OWNER, datetime(2026, 8, 30, 21, 0, tzinfo=KST), None, products)
+
+    titles = sorted(b.title for b in db.list_broadcasts(fake, OWNER))
+    assert titles == ["20260830-2000", "20260830-2000-v2", "20260830-2000-v3", "20260830-2100"]
 
 
 def test_list_products_returns_more_than_one_page(fake):
@@ -92,7 +106,7 @@ def test_list_products_returns_more_than_one_page(fake):
         for i in range(1138)
     ]
     broadcast_id = db.create_broadcast(
-        fake, OWNER, "대량 카탈로그", datetime(2026, 8, 30, 20, 0, tzinfo=KST), None, products
+        fake, OWNER, datetime(2026, 8, 30, 20, 0, tzinfo=KST), None, products
     )
     loaded = db.list_products(fake, broadcast_id)
     assert len(loaded) == 1138

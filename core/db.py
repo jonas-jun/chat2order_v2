@@ -68,10 +68,31 @@ def rotate_staff_token(conn, user_id: str) -> str:
     return token
 
 
+def _generate_broadcast_title(conn, owner: str, scheduled_at: datetime) -> str:
+    """일정(KST) 기준 ``YYYYMMDD-HHMM`` 라방 ID 를 만든다.
+
+    같은 일시로 이미 만든 방송이 있으면 ``-v2``, ``-v3`` … 을 붙여 중복을 피한다.
+    """
+    base = scheduled_at.astimezone(KST).strftime("%Y%m%d-%H%M")
+    response = (
+        conn.table("live_broadcasts")
+        .select("title")
+        .eq("owner_user_id", owner)
+        .ilike("title", f"{base}%")
+        .execute()
+    )
+    existing = {row["title"] for row in response.data}
+    if base not in existing:
+        return base
+    version = 2
+    while f"{base}-v{version}" in existing:
+        version += 1
+    return f"{base}-v{version}"
+
+
 def create_broadcast(
     conn,
     owner: str,
-    title: str,
     scheduled_at: datetime,
     memo: str | None,
     products: list[ProductInput],
@@ -79,7 +100,7 @@ def create_broadcast(
     broadcast_row = _clean(
         {
             "owner_user_id": owner,
-            "title": title,
+            "title": _generate_broadcast_title(conn, owner, scheduled_at),
             "scheduled_at": scheduled_at.isoformat(),
             "memo": memo,
             "created_at": datetime.now(KST).isoformat(),
