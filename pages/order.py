@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from core import cart as cart_fns
 from core import db as dbfns
+from core import pending as pending_fns
 from core.access import get_db, require_staff
 from core.models import CartItem, OrderDraft
 from core.retry import call_with_retry
@@ -12,6 +13,7 @@ from core.session_keys import (
     CART_VERSION,
     EDITING_ORDER_ID,
     ORDER_FORM_VERSION,
+    PENDING_ORDERS,
 )
 from core.settings import KST, get_env
 from core.textutil import phone_digits as digits_of
@@ -35,10 +37,12 @@ if broadcast is None or broadcast.owner_user_id != owner:
 def render_header() -> None:
     count = len(dbfns.list_order_rows(db, broadcast.id, status="received"))
     status_label = "🟢 진행중" if broadcast.status == "open" else "🔴 마감"
+    pending_count = len(st.session_state.get(PENDING_ORDERS, []))
+    pending_label = f" · 🛒 미제출 {pending_count}건" if pending_count else ""
     st.markdown(
         f"#### 🎥 {broadcast.title} · "
         f"{broadcast.scheduled_at.astimezone(KST).strftime('%Y-%m-%d %H:%M')} · "
-        f"{status_label} · 접수 {count}건 · 👤 {staff_name}"
+        f"{status_label} · 접수 {count}건{pending_label} · 👤 {staff_name}"
     )
 
 
@@ -60,6 +64,22 @@ product_names = list(dict.fromkeys(p.product_name for p in products))
 form_version = st.session_state.get(ORDER_FORM_VERSION, 0)
 cart_version = st.session_state.get(CART_VERSION, 0)
 editing_order_id = st.session_state.get(EDITING_ORDER_ID)
+pending_orders = st.session_state.get(PENDING_ORDERS, [])
+
+
+def _load_into_form(source, next_version: int) -> None:
+    """주문(OrderRow) 또는 미제출 초안(OrderDraft)을 장바구니·고객정보 폼으로 되돌린다."""
+    st.session_state[CART] = list(source.items)
+    st.session_state[CART_VERSION] = cart_version + 1
+    st.session_state[ORDER_FORM_VERSION] = next_version
+    st.session_state[f"chat_name_{next_version}"] = source.chat_name or ""
+    st.session_state[f"customer_name_{next_version}"] = source.customer_name
+    st.session_state[f"phone_{next_version}"] = source.phone
+    st.session_state[f"memo_{next_version}"] = source.memo or ""
+    st.session_state[f"address_{next_version}"] = source.address
+    st.session_state[f"address_detail_{next_version}"] = source.address_detail or ""
+    st.session_state[f"zip_code_{next_version}"] = source.zip_code or ""
+
 
 st.subheader("장바구니")
 if not product_names:
@@ -174,16 +194,42 @@ if phone_digits_value and not is_closed:
         for o in dbfns.find_orders_by_phone(db, broadcast.id, phone_digits_value)
         if o.id != editing_order_id
     ]
+pending_dup_count = pending_fns.duplicate_phone_count(pending_orders, phone_digits_value)
+total_dup_count = len(duplicate_orders) + pending_dup_count
 
 confirm_duplicate = True
-if duplicate_orders:
-    st.warning(f"같은 전화번호로 이미 {len(duplicate_orders)}건 접수된 주문이 있습니다.")
-    confirm_duplicate = st.checkbox("그래도 저장", key=f"confirm_dup_{form_version}")
+if total_dup_count:
+    parts = []
+    if duplicate_orders:
+        parts.append(f"접수 {len(duplicate_orders)}건")
+    if pending_dup_count:
+        parts.append(f"미제출 {pending_dup_count}건")
+    st.warning(f"같은 전화번호로 이미 {' · '.join(parts)} 있습니다.")
+    confirm_duplicate = st.checkbox("그래도 진행", key=f"confirm_dup_{form_version}")
 
-save_label = "💾 주문 수정 저장" if editing_order_id else "💾 주문 저장"
-if st.button(save_label, key=f"save_order_{form_version}", type="primary", disabled=is_closed):
-    if duplicate_orders and not confirm_duplicate:
-        st.error("중복 경고를 확인하고 '그래도 저장'을 체크하세요.")
+
+def _clear_form_after() -> None:
+    st.session_state[CART] = []
+    st.session_state.pop(EDITING_ORDER_ID, None)
+    st.session_state[ADDRESS_CANDIDATES] = []
+    st.session_state[ORDER_FORM_VERSION] = form_version + 1
+    st.rerun()
+
+
+action = None
+if editing_order_id:
+    if st.button(
+        "💾 주문 수정 저장", key=f"save_order_{form_version}", type="primary", disabled=is_closed
+    ):
+        action = "update"
+elif st.button(
+    "🛒 주문 담기", key=f"save_order_{form_version}", type="primary", disabled=is_closed
+):
+    action = "queue"
+
+if action:
+    if total_dup_count and not confirm_duplicate:
+        st.error("중복 경고를 확인하고 '그래도 진행'을 체크하세요.")
     else:
         try:
             draft = OrderDraft(
@@ -202,25 +248,68 @@ if st.button(save_label, key=f"save_order_{form_version}", type="primary", disab
                 field = err["loc"][0] if err["loc"] else "입력값"
                 st.error(f"{field}: {err['msg']}")
         else:
-            try:
-                if editing_order_id:
+            if action == "update":
+                try:
                     call_with_retry(lambda: dbfns.update_order(db, editing_order_id, draft))
-                    st.toast("주문을 수정했습니다.")
+                except Exception:
+                    st.error("저장에 실패했습니다. 네트워크 문제일 수 있습니다. 다시 시도해 주세요.")
                 else:
-                    call_with_retry(lambda: dbfns.create_order(db, broadcast, draft))
-                    st.toast("주문을 저장했습니다.")
-            except Exception:
-                st.error("저장에 실패했습니다. 네트워크 문제일 수 있습니다. 다시 시도해 주세요.")
+                    st.toast("주문을 수정했습니다.")
+                    _clear_form_after()
             else:
-                st.session_state[CART] = []
-                st.session_state.pop(EDITING_ORDER_ID, None)
-                st.session_state[ADDRESS_CANDIDATES] = []
-                st.session_state[ORDER_FORM_VERSION] = form_version + 1
-                st.rerun()
+                st.session_state[PENDING_ORDERS] = pending_fns.append(pending_orders, draft)
+                st.toast("미제출 목록에 담았습니다.")
+                _clear_form_after()
 
 st.divider()
-st.subheader("내 접수 (최근 20건)")
-my_orders = dbfns.list_my_recent_orders(db, broadcast.id, staff_name, limit=20)
+st.subheader(f"미제출 주문 ({len(pending_orders)}건)")
+st.caption("제출 전까지 페이지를 새로고침하거나 닫으면 미제출 주문이 사라집니다.")
+
+if not pending_orders:
+    st.caption("담긴 미제출 주문이 없습니다.")
+else:
+    for idx, draft in enumerate(pending_orders):
+        row = st.columns([3, 2, 4, 2, 1, 1])
+        row[0].write(draft.customer_name)
+        row[1].write(draft.phone)
+        row[2].write(
+            "; ".join(f"{i.product_name} {i.option_name} x{i.quantity}" for i in draft.items)
+        )
+        row[3].write(f"{sum(i.unit_price * i.quantity for i in draft.items):,}원")
+        if row[4].button("수정", key=f"pending_edit_{idx}_{form_version}", disabled=is_closed):
+            st.session_state[PENDING_ORDERS] = pending_fns.remove(pending_orders, idx)
+            st.session_state.pop(EDITING_ORDER_ID, None)
+            _load_into_form(draft, form_version + 1)
+            st.session_state[ADDRESS_CANDIDATES] = []
+            st.rerun()
+        if row[5].button("삭제", key=f"pending_del_{idx}_{form_version}"):
+            st.session_state[PENDING_ORDERS] = pending_fns.remove(pending_orders, idx)
+            st.rerun()
+    st.markdown(f"**미제출 합계 {pending_fns.total_amount(pending_orders):,}원**")
+    if st.button(
+        f"📤 전체 제출 ({len(pending_orders)}건)",
+        key=f"submit_pending_{form_version}",
+        type="primary",
+    ):
+        created, failed = [], []
+        for draft in pending_orders:
+            try:
+                call_with_retry(lambda d=draft: dbfns.create_order(db, broadcast, d))
+                created.append(draft)
+            except Exception:
+                failed.append(draft)
+        st.session_state[PENDING_ORDERS] = failed
+        if failed:
+            st.error(
+                f"{len(created)}건 제출 완료, {len(failed)}건 실패. 남은 주문을 다시 제출해 주세요."
+            )
+        else:
+            st.toast(f"{len(created)}건을 제출했습니다.")
+        st.rerun()
+
+st.divider()
+st.subheader("내 접수 (최근 50건)")
+my_orders = dbfns.list_my_recent_orders(db, broadcast.id, staff_name, limit=50)
 
 if not my_orders:
     st.caption("아직 접수한 주문이 없습니다.")
@@ -254,20 +343,8 @@ else:
             if action_cols[0].button(
                 "이 주문 수정하기", key=f"edit_{selected_order.id}", disabled=is_closed
             ):
-                next_version = form_version + 1
                 st.session_state[EDITING_ORDER_ID] = selected_order.id
-                st.session_state[CART] = list(selected_order.items)
-                st.session_state[CART_VERSION] = cart_version + 1
-                st.session_state[ORDER_FORM_VERSION] = next_version
-                st.session_state[f"chat_name_{next_version}"] = selected_order.chat_name or ""
-                st.session_state[f"customer_name_{next_version}"] = selected_order.customer_name
-                st.session_state[f"phone_{next_version}"] = selected_order.phone
-                st.session_state[f"memo_{next_version}"] = selected_order.memo or ""
-                st.session_state[f"address_{next_version}"] = selected_order.address
-                st.session_state[f"address_detail_{next_version}"] = (
-                    selected_order.address_detail or ""
-                )
-                st.session_state[f"zip_code_{next_version}"] = selected_order.zip_code or ""
+                _load_into_form(selected_order, form_version + 1)
                 st.rerun()
 
             confirm_cancel = action_cols[1].checkbox(
