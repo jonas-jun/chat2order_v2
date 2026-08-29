@@ -111,25 +111,22 @@ if selected_id:
 
         order_count = counts.get(broadcast.id, 0)
 
-        with st.expander("📮 우편번호 채우기 → 엑셀 다운로드"):
+        with st.expander("📮 엑셀 다운로드 (우편번호 자동 보완)"):
             if order_count == 0:
                 st.info("접수된 주문이 없습니다.")
             else:
                 config = load_config()
-                refetch_all = st.checkbox(
-                    "전체 재조회 (이미 채워진 우편번호도 다시 조회)", key=f"refetch_all_{broadcast.id}"
-                )
-                if st.button("실행", key=f"run_export_{broadcast.id}"):
+                st.caption("주소는 있는데 우편번호가 비어있는 주문만 자동으로 한 번 조회합니다.")
+                if st.button("엑셀 만들기", key=f"run_export_{broadcast.id}"):
                     order_rows = dbfns.list_order_rows(db, broadcast.id, status="received")
-                    targets = order_rows if refetch_all else [o for o in order_rows if not o.zip_code]
-
-                    gemini_key = st.session_state.get(GEMINI_API_KEY) or ""
-                    if not gemini_key:
-                        st.warning(
-                            "Gemini API 키가 없어 LLM 정제를 생략합니다. JUSO 직접 조회만 시도합니다."
-                        )
+                    targets = [o for o in order_rows if o.address and not o.zip_code]
 
                     if targets:
+                        gemini_key = st.session_state.get(GEMINI_API_KEY) or ""
+                        if not gemini_key:
+                            st.warning(
+                                "Gemini API 키가 없어 LLM 정제를 생략합니다. JUSO 직접 조회만 시도합니다."
+                            )
                         prompt_template = load_prompt_template(config["prompts"]["address_to_search"])
                         progress_bar = st.progress(0.0)
                         status_box = st.status("우편번호 조회 중입니다", expanded=True)
