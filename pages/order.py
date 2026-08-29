@@ -299,7 +299,6 @@ else:
             except Exception:
                 failed.append(draft)
         st.session_state[PENDING_ORDERS] = failed
-        st.session_state[ORDER_FORM_VERSION] = form_version + 1
         if failed:
             st.error(
                 f"{len(created)}건 제출 완료, {len(failed)}건 실패. 남은 주문을 다시 제출해 주세요."
