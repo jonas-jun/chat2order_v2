@@ -5,7 +5,7 @@ alter table accounts add column if not exists staff_token text unique;
 create table if not exists live_broadcasts (
   id              uuid primary key default gen_random_uuid(),
   owner_user_id   text not null,                    -- accounts.user_id (이메일)
-  title           text not null,
+  title           text not null,                    -- 라방 ID. 일시에서 YYYYMMDD-HHMM 자동 생성(중복 시 -v2)
   scheduled_at    timestamptz not null,
   memo            text,
   status          text not null default 'open'
