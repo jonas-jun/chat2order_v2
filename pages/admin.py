@@ -10,6 +10,7 @@ from core.export import build_excel, rows_to_frame
 from core.links import public_url
 from core.llm import load_prompt_template
 from core.models import ProductInput
+from core.sales_panel import render_sales_panel
 from core.session_keys import (
     CSV_UPLOADER_VERSION,
     GEMINI_API_KEY,
@@ -116,6 +117,9 @@ if selected_id:
                 st.rerun()
 
         order_count = counts.get(broadcast.id, 0)
+
+        # 엑셀을 뽑기 전에 판매 현황을 먼저 보는 순서라 다운로드 위에 둔다.
+        render_sales_panel(db, broadcast.id, key_prefix=f"admin_{broadcast.id}")
 
         with st.expander("📮 엑셀 다운로드 (우편번호 자동 보완)"):
             if order_count == 0:

@@ -7,6 +7,7 @@ from core import pending as pending_fns
 from core.access import get_db, require_staff
 from core.models import CartItem, OrderDraft
 from core.retry import call_with_retry
+from core.sales_panel import render_sales_panel
 from core.session_keys import (
     ADDRESS_CANDIDATES,
     CART,
@@ -51,6 +52,16 @@ render_header()
 is_closed = broadcast.status != "open"
 if is_closed:
     st.warning("이 방송은 마감되었습니다. 관리자가 재개하기 전까지 새 주문·수정을 받을 수 없습니다.")
+
+# 문의 대응은 "확인 → 담기" 순서라 담는 위젯 위에 둔다. 접혀 있어 평소에는
+# 한 줄만 차지한다. 미제출 큐는 아래에서 다시 읽지만, 화면 순서가 곧 호출
+# 순서라 여기서 세션에서 직접 꺼내 넘긴다.
+render_sales_panel(
+    db,
+    broadcast.id,
+    key_prefix="order",
+    pending_orders=st.session_state.get(PENDING_ORDERS, []),
+)
 
 
 @st.cache_data(ttl=300)

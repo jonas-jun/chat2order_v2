@@ -48,6 +48,26 @@ class ProductInput(BaseModel):
     price: int = Field(ge=0)
 
 
+class ProductSalesRow(BaseModel):
+    """방송 하나의 (상품, 옵션) 판매 집계 1행. ``live_product_sales`` RPC 결과."""
+
+    product_name: str
+    option_name: str
+    quantity: int = 0
+    order_count: int = 0
+
+
+class ProductSalesGroup(BaseModel):
+    """상품 1종의 옵션 집계 묶음. 화면에서 상품별 소제목 + 표로 그린다."""
+
+    product_name: str
+    rows: list[ProductSalesRow]
+
+    @property
+    def total_quantity(self) -> int:
+        return sum(row.quantity for row in self.rows)
+
+
 class CartItem(BaseModel):
     product_id: str | None = None
     product_name: str
