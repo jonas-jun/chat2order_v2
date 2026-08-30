@@ -44,8 +44,11 @@ def main(ctx=None):
         # nixpacks-v1.41.0"). 마이그레이션에서 빌더를 바꾸지 않으려면 NIXPACKS 여야 한다.
         build={"builder": "NIXPACKS"},
         start=START_COMMAND,
-        # 앱이 죽으면 자동 복구. 구 railway.json 의 restartPolicyType 과 같은 값.
-        deploy={"restartPolicyType": "ON_FAILURE"},
+        # 구 railway.json 의 restartPolicyType: ON_FAILURE 는 옮기지 않았다. IaC DSL 이
+        # 재시작 정책 키를 지원하지 않아 apply 가 무시하고(설정은 null 로 남는다) plan 에
+        # 영원히 1 change 로 뜬다. Railway 기본값이 이미 On Failure(최대 10회)라
+        # 그 줄은 기본값을 다시 쓴 것뿐이었고, 빼도 동작은 같다.
+        # https://docs.railway.com/deployments/restart-policy
         env={name: preserve() for name in MANAGED_VARIABLES},
         networking={
             # 운영 공개 도메인. core/links.py 가 RAILWAY_PUBLIC_DOMAIN 으로 읽어
