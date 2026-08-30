@@ -30,12 +30,18 @@ st.markdown(
 
 
 def _public_url(path: str) -> str:
-    # LIVE_PUBLIC_URL 이 없으면 현재 접속 주소의 origin 을 붙여 full URL 로 보여준다.
+    # LIVE_PUBLIC_URL 이 없으면 Railway 가 주입한 공개 도메인을, 그것도 없으면
+    # 현재 접속 주소의 origin 을 붙여 full URL 로 보여준다.
     try:
         current_url = st.context.url
     except Exception:
         current_url = None
-    return public_url(path, get_env("LIVE_PUBLIC_URL"), current_url)
+    return public_url(
+        path,
+        get_env("LIVE_PUBLIC_URL"),
+        current_url,
+        get_env("RAILWAY_PUBLIC_DOMAIN"),
+    )
 
 
 with st.sidebar:
