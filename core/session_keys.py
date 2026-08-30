@@ -7,6 +7,11 @@ LOGGED_IN_USER = "c2o_live_logged_in_user"
 STAFF_NICKNAME = "c2o_live_staff_nickname"
 GEMINI_API_KEY = "c2o_live_gemini_api_key"
 
+# 쿠키 복원은 세션당 한 번만 시도한다 (로그아웃 후 되살아나는 것을 막는다).
+AUTH_COOKIE_CHECKED = "c2o_live_auth_cookie_checked"
+STAFF_COOKIE_CHECKED = "c2o_live_staff_cookie_checked"
+AUTH_COOKIE_CLEAR_PENDING = "c2o_live_auth_cookie_clear_pending"
+
 SELECTED_BROADCAST_ID = "c2o_live_selected_broadcast_id"
 NEW_BROADCAST_PRODUCTS = "c2o_live_new_broadcast_products"
 CSV_UPLOADER_VERSION = "c2o_live_csv_uploader_version"

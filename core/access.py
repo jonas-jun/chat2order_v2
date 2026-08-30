@@ -5,13 +5,21 @@ Streamlit 위젯을 직접 그린다 — 인증은 UI 와 분리하기 어려운
 """
 
 from datetime import datetime, timedelta, timezone
+from urllib.parse import unquote
 
 import extra_streamlit_components as stx
 import streamlit as st
 
 from core.auth import COOKIE_NAME, DEFAULT_TTL_SECONDS, issue_token, verify_token
 from core.db import authenticate_admin, get_gemini_api_key, get_owner_by_staff_token
-from core.session_keys import GEMINI_API_KEY, LOGGED_IN_USER, STAFF_NICKNAME
+from core.session_keys import (
+    AUTH_COOKIE_CHECKED,
+    AUTH_COOKIE_CLEAR_PENDING,
+    GEMINI_API_KEY,
+    LOGGED_IN_USER,
+    STAFF_COOKIE_CHECKED,
+    STAFF_NICKNAME,
+)
 from core.settings import get_env
 from core.supabase_client import create_supabase_client
 
@@ -33,13 +41,29 @@ def get_admin_cookie_manager() -> stx.CookieManager:
     return stx.CookieManager(key=_ADMIN_COOKIE_MANAGER_KEY)
 
 
+def read_request_cookie(name: str) -> str | None:
+    """세션 최초 요청 헤더에서 쿠키 값을 동기적으로 읽는다.
+
+    ``stx.CookieManager.get()`` 은 iframe 이 마운트된 뒤에야 값을 돌려주므로 첫 렌더에서는
+    항상 ``None`` 이다. 그 값을 믿고 로그인 폼을 그리면, 사용자가 이메일을 입력하는 도중
+    컴포넌트 응답이 도착하며 rerun 이 걸려 쿠키에 남아있던 계정으로 로그인돼 버린다.
+    ``st.context.cookies`` 는 요청 헤더에서 읽으므로 첫 렌더부터 값이 있어 이 경합이 없다.
+    쿠키 값은 브라우저 측에서 percent-encoding 되어 저장되므로 디코딩해서 돌려준다.
+    """
+    try:
+        raw = st.context.cookies.get(name)
+    except Exception:  # pragma: no cover - 컨텍스트가 없는 실행 경로 방어
+        return None
+    return unquote(raw) if raw else None
+
+
 def require_admin(db) -> str:
     """로그인된 관리자의 user_id 를 반환한다. 실패하면 로그인 폼을 그리고 멈춘다."""
     secret = get_env("AUTH_SECRET")
-    cookie_manager = get_admin_cookie_manager()
 
-    if LOGGED_IN_USER not in st.session_state:
-        restored = verify_token(cookie_manager.get(COOKIE_NAME), secret)
+    if LOGGED_IN_USER not in st.session_state and not st.session_state.get(AUTH_COOKIE_CHECKED):
+        st.session_state[AUTH_COOKIE_CHECKED] = True
+        restored = verify_token(read_request_cookie(COOKIE_NAME), secret)
         if restored:
             st.session_state[LOGGED_IN_USER] = restored
 
@@ -47,6 +71,9 @@ def require_admin(db) -> str:
         _ensure_gemini_key_cached(db, st.session_state[LOGGED_IN_USER])
         return st.session_state[LOGGED_IN_USER]
 
+    cookie_manager = get_admin_cookie_manager()
+    if st.session_state.pop(AUTH_COOKIE_CLEAR_PENDING, False):
+        _delete_auth_cookie(cookie_manager)
     _render_login_form(db, cookie_manager, secret)
     st.stop()
     raise RuntimeError("unreachable")  # st.stop() 이 스크립트 실행을 여기서 끝낸다
@@ -92,10 +119,18 @@ def _render_login_form(db, cookie_manager: stx.CookieManager, secret: str) -> No
 
 def logout() -> None:
     st.session_state.pop(LOGGED_IN_USER, None)
-    cookie_manager = get_admin_cookie_manager()
+    st.session_state.pop(GEMINI_API_KEY, None)  # 다음 계정이 이전 계정의 키를 물려받지 않도록
+    # 쿠키 복원은 이미 시도한 것으로 표시해, 로그아웃 직후 다시 로그인되지 않게 한다.
+    st.session_state[AUTH_COOKIE_CHECKED] = True
+    # 실제 삭제는 로그인 폼과 함께 그려질 때 수행한다. 여기서 삭제 컴포넌트를 그려도
+    # 호출부의 st.rerun() 이 iframe 을 곧바로 걷어내 삭제가 유실될 수 있다.
+    st.session_state[AUTH_COOKIE_CLEAR_PENDING] = True
+
+
+def _delete_auth_cookie(cookie_manager: stx.CookieManager) -> None:
     try:
         cookie_manager.delete(COOKIE_NAME, key="delete_auth_cookie")
-    except KeyError:
+    except KeyError:  # 컴포넌트가 아직 쿠키 목록을 받지 못한 경우
         pass
 
 
@@ -124,16 +159,16 @@ def require_staff(
     if not require_nickname:
         return owner, ""
 
-    cookie_manager = stx.CookieManager(key=_STAFF_COOKIE_MANAGER_KEY)
-
-    if STAFF_NICKNAME not in st.session_state:
-        cookie_nickname = cookie_manager.get(STAFF_NICKNAME_COOKIE)
+    if STAFF_NICKNAME not in st.session_state and not st.session_state.get(STAFF_COOKIE_CHECKED):
+        st.session_state[STAFF_COOKIE_CHECKED] = True
+        cookie_nickname = read_request_cookie(STAFF_NICKNAME_COOKIE)
         if cookie_nickname:
             st.session_state[STAFF_NICKNAME] = cookie_nickname
 
     if STAFF_NICKNAME in st.session_state:
         return owner, st.session_state[STAFF_NICKNAME]
 
+    cookie_manager = stx.CookieManager(key=_STAFF_COOKIE_MANAGER_KEY)
     st.subheader("닉네임을 입력해 주세요")
     with st.form("staff_nickname_form"):
         nickname = st.text_input("닉네임")
