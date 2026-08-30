@@ -5,7 +5,7 @@ import pytest
 from core import db
 from core.models import CartItem, OrderDraft, ProductInput
 from core.settings import KST
-from tests.fakes import FakeSupabase, install_order_seq_rpc
+from tests.fakes import FakeSupabase, install_order_seq_rpc, install_product_sales_rpc
 
 OWNER = "seller@example.com"
 
@@ -14,6 +14,7 @@ OWNER = "seller@example.com"
 def fake():
     f = FakeSupabase()
     install_order_seq_rpc(f)
+    install_product_sales_rpc(f)
     return f
 
 
@@ -285,3 +286,57 @@ def test_list_order_rows_excludes_cancelled(fake):
 
     rows = db.list_order_rows(fake, broadcast_id)
     assert [r.id for r in rows] == [keep.id]
+
+
+def test_aggregate_product_sales_sums_quantities_and_counts_orders(fake):
+    broadcast_id = _seed_broadcast(fake)
+    broadcast = db.get_broadcast(fake, broadcast_id)
+    db.create_order(
+        fake,
+        broadcast,
+        _draft(
+            items=[
+                CartItem(product_name="가디건", option_name="그레이", unit_price=78000, quantity=2),
+                CartItem(product_name="스커트", option_name="단일", unit_price=129000, quantity=1),
+            ]
+        ),
+    )
+    db.create_order(
+        fake,
+        broadcast,
+        _draft(
+            phone="01033334444",
+            items=[
+                CartItem(product_name="가디건", option_name="그레이", unit_price=78000, quantity=3)
+            ],
+        ),
+    )
+
+    by_key = {
+        (row.product_name, row.option_name): row
+        for row in db.aggregate_product_sales(fake, broadcast_id)
+    }
+
+    assert by_key[("가디건", "그레이")].quantity == 5
+    assert by_key[("가디건", "그레이")].order_count == 2
+    assert by_key[("스커트", "단일")].quantity == 1
+    assert by_key[("스커트", "단일")].order_count == 1
+
+
+def test_aggregate_product_sales_excludes_cancelled_orders(fake):
+    broadcast_id = _seed_broadcast(fake)
+    broadcast = db.get_broadcast(fake, broadcast_id)
+    order = db.create_order(fake, broadcast, _draft())
+    db.cancel_order(fake, order.id)
+
+    assert db.aggregate_product_sales(fake, broadcast_id) == []
+
+
+def test_aggregate_product_sales_ignores_other_broadcasts(fake):
+    first = db.get_broadcast(fake, _seed_broadcast(fake))
+    second = db.get_broadcast(
+        fake, _seed_broadcast(fake, datetime(2026, 8, 31, 20, 0, tzinfo=KST))
+    )
+    db.create_order(fake, first, _draft())
+
+    assert db.aggregate_product_sales(fake, second.id) == []

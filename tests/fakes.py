@@ -189,3 +189,43 @@ def install_order_seq_rpc(fake: FakeSupabase) -> None:
         raise KeyError(f"broadcast not found: {broadcast_id}")
 
     fake.set_rpc("live_next_order_seq", handler)
+
+
+def install_product_sales_rpc(fake: FakeSupabase) -> None:
+    """live_product_sales 를 파이썬 GROUP BY 로 흉내낸다.
+
+    실제 SQL 과 같이 취소 주문을 빼고, (상품, 옵션) 별로 수량 합계와 서로 다른
+    주문 수를 센다.
+    """
+
+    def handler(params: dict) -> list[dict]:
+        broadcast_id = params["p_broadcast_id"]
+        received = {
+            o["id"]
+            for o in fake.tables.get("live_orders", [])
+            if o["broadcast_id"] == broadcast_id and o.get("status") == "received"
+        }
+        grouped: dict[tuple[str, str], dict] = {}
+        for item in fake.tables.get("live_order_items", []):
+            if item["order_id"] not in received:
+                continue
+            key = (item["product_name"], item["option_name"])
+            entry = grouped.setdefault(
+                key,
+                {
+                    "product_name": key[0],
+                    "option_name": key[1],
+                    "quantity": 0,
+                    "order_count": 0,
+                    "_orders": set(),
+                },
+            )
+            entry["quantity"] += item["quantity"]
+            entry["_orders"].add(item["order_id"])
+        rows = []
+        for entry in grouped.values():
+            entry["order_count"] = len(entry.pop("_orders"))
+            rows.append(entry)
+        return rows
+
+    fake.set_rpc("live_product_sales", handler)

@@ -77,3 +77,20 @@ returns int language sql as $$
    where id = p_broadcast_id
   returning last_order_seq;
 $$;
+
+-- 6) 방송별 (상품, 옵션) 판매 집계. 취소 주문은 제외한다.
+-- 주문·아이템 전 행을 앱으로 끌어오지 않으려고 서버에서 GROUP BY 한다. 응답은
+-- 옵션 수(수십~수백 행)뿐이라 라방 중 여러 직원이 동시에 열어도 부담이 없다.
+-- 필터에 쓰는 인덱스는 위에서 이미 만든 것으로 충분하다
+-- (live_orders(broadcast_id, status), live_order_items(order_id)).
+create or replace function live_product_sales(p_broadcast_id uuid)
+returns table (product_name text, option_name text, quantity bigint, order_count bigint)
+language sql stable as $$
+  select i.product_name, i.option_name,
+         sum(i.quantity)::bigint, count(distinct i.order_id)::bigint
+    from live_order_items i
+    join live_orders o on o.id = i.order_id
+   where o.broadcast_id = p_broadcast_id
+     and o.status = 'received'
+   group by 1, 2;
+$$;

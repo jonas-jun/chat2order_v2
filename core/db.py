@@ -11,7 +11,14 @@ import math
 import secrets
 from datetime import datetime
 
-from core.models import Broadcast, OrderDraft, OrderRow, Product, ProductInput
+from core.models import (
+    Broadcast,
+    OrderDraft,
+    OrderRow,
+    Product,
+    ProductInput,
+    ProductSalesRow,
+)
 from core.settings import KST
 
 
@@ -380,6 +387,18 @@ def list_order_rows(conn, broadcast_id: str, status: str = "received") -> list[O
         .order("created_at", desc=False)
     )
     return _attach_items(conn, orders)
+
+
+def aggregate_product_sales(conn, broadcast_id: str) -> list[ProductSalesRow]:
+    """방송의 (상품, 옵션)별 접수 수량·주문 건수. 취소된 주문은 빠진다.
+
+    주문·아이템 전 행을 앱으로 끌어와 세지 않고 ``live_product_sales`` RPC 로
+    서버에서 GROUP BY 한다 — 주문이 수천 건이어도 응답은 옵션 수만큼의 행이다.
+    한 건도 안 팔린 옵션은 결과에 없다. 화면에 0 으로 보이게 채우는 일은
+    :func:`core.sales.merge_with_catalog` 가 카탈로그를 기준으로 맡는다.
+    """
+    rows = conn.rpc("live_product_sales", {"p_broadcast_id": broadcast_id}).execute().data
+    return [ProductSalesRow(**row) for row in rows or []]
 
 
 def _attach_items(conn, orders: list[dict]) -> list[OrderRow]:
