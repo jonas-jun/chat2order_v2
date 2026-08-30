@@ -73,3 +73,19 @@ streamlit run app.py
 conda activate c2o-v2
 python -m pytest
 ```
+
+## 배포 설정
+
+운영 서비스 설정(빌더·시작 명령·재시작 정책·공개 도메인)은 `.railway/railway.py`
+하나가 소유한다. 구 `railway.json` (Config as Code) 은 Railway 가 2026-12-01 에
+지원을 끊어 제거했다.
+
+```bash
+pip install railway-sdk          # 작성/적용 전용. 런타임 의존성이 아니다
+railway config plan --verbose    # 실제 환경과의 diff 미리보기
+railway config apply             # 적용
+```
+
+`plan` 이 파괴적 변경(변수·도메인 삭제)을 보고하면 적용하지 말 것. 이 파일이
+선언하지 않은 항목은 지워진다. Railway 에 환경변수를 새로 추가했다면
+`MANAGED_VARIABLES` 에도 키를 추가해야 다음 apply 때 삭제되지 않는다.
