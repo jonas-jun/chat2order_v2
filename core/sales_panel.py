@@ -4,7 +4,7 @@
 같은 표를 붙여야 해서 렌더까지 한곳에 모으는 편이 중복보다 낫다. 집계 규칙은
 ``core/sales.py`` 에 순수 함수로 두고 여기서는 배치와 표시만 한다.
 
-패널 전체를 fragment 로 감싼다. 검색·새로고침이 페이지 전체를 rerun 하지 않아
+패널 전체를 fragment 로 감싼다. 상품 선택·새로고침이 페이지 전체를 rerun 하지 않아
 주문 입력 폼이 흔들리지 않고, expander 도 열린 채로 남는다.
 """
 
@@ -24,8 +24,6 @@ from core.settings import KST
 _SALES_TTL_SECONDS = 20
 # 카탈로그는 방송 중 바뀌지 않는다 (주문이 있으면 상품 교체가 막혀 있다).
 _CATALOG_TTL_SECONDS = 300
-# 검색 없이 열었을 때 표를 무한정 그리지 않도록 상품 종류 수를 제한한다.
-_MAX_GROUPS = 20
 
 
 @st.cache_data(ttl=_SALES_TTL_SECONDS, show_spinner=False)
@@ -61,39 +59,38 @@ def render_sales_panel(
 def _render_body(
     db, broadcast_id: str, key_prefix: str, pending_orders: list[OrderDraft]
 ) -> None:
-    search_col, refresh_col = st.columns([4, 1], vertical_alignment="bottom")
-    keyword = search_col.text_input(
-        "상품 검색",
-        key=f"{key_prefix}_sales_keyword",
-        placeholder="상품명 일부. 비우면 전체를 봅니다",
+    sales = _load_sales(db, broadcast_id)
+    catalog = _load_catalog(db, broadcast_id)
+    rows = sales_fns.merge_with_catalog(catalog, sales)
+
+    if not rows:
+        st.caption("등록된 상품이 없습니다.")
+        return
+
+    pick_col, refresh_col = st.columns([4, 1], vertical_alignment="bottom")
+    # selectbox 는 타이핑하면 목록을 걸러 준다. 상품이 수백 종이어도 이름 일부만
+    # 치면 찾히므로 별도 검색창이 필요 없고, 고른 상품 하나만 표로 그린다.
+    selected = pick_col.selectbox(
+        "상품",
+        sales_fns.product_names(rows),
+        index=None,
+        placeholder="상품명을 입력해 검색하세요",
+        key=f"{key_prefix}_sales_product",
     )
     if refresh_col.button("🔄 새로고침", key=f"{key_prefix}_sales_refresh", width="stretch"):
         _load_sales.clear()
 
-    sales = _load_sales(db, broadcast_id)
-    catalog = _load_catalog(db, broadcast_id)
-    rows = sales_fns.filter_by_keyword(sales_fns.merge_with_catalog(catalog, sales), keyword)
-
-    if not rows:
-        st.caption("검색 결과가 없습니다." if keyword else "등록된 상품이 없습니다.")
+    group = sales_fns.group_for(rows, selected) if selected else None
+    if group is None:
+        st.caption("상품을 고르면 옵션별 주문 수량이 보입니다.")
         return
 
-    groups = sales_fns.group_by_product(rows)
-    hidden = len(groups) - _MAX_GROUPS
-    pending_by_key = sales_fns.pending_quantities(pending_orders)
-
-    for group in groups[:_MAX_GROUPS]:
-        st.markdown(f"**{group.product_name}** · 합계 {group.total_quantity:,}개")
-        st.dataframe(
-            _table_rows(group, pending_by_key),
-            width="stretch",
-            hide_index=True,
-        )
-
-    if hidden > 0:
-        st.caption(f"상품 {hidden}종을 더 찾았습니다. 상품명으로 검색해 좁혀 보세요.")
-    if not any(row.quantity for row in rows):
-        st.caption("아직 접수된 주문이 없습니다.")
+    st.markdown(f"**{group.product_name}** · 합계 {group.total_quantity:,}개")
+    st.dataframe(
+        _table_rows(group, sales_fns.pending_quantities(pending_orders)),
+        width="stretch",
+        hide_index=True,
+    )
     st.caption(
         f"취소된 주문은 제외됩니다 · {datetime.now(KST).strftime('%H:%M:%S')} 기준"
     )

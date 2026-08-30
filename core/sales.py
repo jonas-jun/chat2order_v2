@@ -14,15 +14,6 @@ from core.models import OrderDraft, Product, ProductSalesGroup, ProductSalesRow
 _SalesKey = tuple[str, str]
 
 
-def normalize(text: str | None) -> str:
-    """검색 비교용 정규화. 대소문자와 모든 공백을 무시한다.
-
-    상품명은 "니트 가디건" / "니트가디건" 처럼 띄어쓰기가 흔들려 입력되므로
-    공백을 아예 없애고 비교한다.
-    """
-    return "".join((text or "").split()).casefold()
-
-
 def merge_with_catalog(
     products: list[Product], sales: list[ProductSalesRow]
 ) -> list[ProductSalesRow]:
@@ -47,23 +38,17 @@ def merge_with_catalog(
     return merged + orphans
 
 
-def filter_by_keyword(rows: list[ProductSalesRow], keyword: str | None) -> list[ProductSalesRow]:
-    """상품명 부분일치로 거른다. 검색어가 비면 전체를 그대로 돌려준다."""
-    needle = normalize(keyword)
-    if not needle:
-        return list(rows)
-    return [row for row in rows if needle in normalize(row.product_name)]
+def product_names(rows: list[ProductSalesRow]) -> list[str]:
+    """드롭다운에 채울 상품명. 카탈로그 순서를 유지하고 중복을 없앤다."""
+    return list(dict.fromkeys(row.product_name for row in rows))
 
 
-def group_by_product(rows: list[ProductSalesRow]) -> list[ProductSalesGroup]:
-    """상품별로 묶는다. 상품이 처음 나온 순서(=카탈로그 순서)를 유지한다."""
-    grouped: dict[str, list[ProductSalesRow]] = {}
-    for row in rows:
-        grouped.setdefault(row.product_name, []).append(row)
-    return [
-        ProductSalesGroup(product_name=name, rows=option_rows)
-        for name, option_rows in grouped.items()
-    ]
+def group_for(rows: list[ProductSalesRow], product_name: str) -> ProductSalesGroup | None:
+    """상품 하나의 옵션 집계 묶음. 그 이름의 행이 없으면 ``None``."""
+    option_rows = [row for row in rows if row.product_name == product_name]
+    if not option_rows:
+        return None
+    return ProductSalesGroup(product_name=product_name, rows=option_rows)
 
 
 def pending_quantities(pending: list[OrderDraft]) -> dict[_SalesKey, int]:

@@ -33,12 +33,6 @@ def _item(name, option, quantity):
     return CartItem(product_name=name, option_name=option, unit_price=1000, quantity=quantity)
 
 
-def test_normalize_ignores_case_and_spaces():
-    assert sales.normalize(" 니트 가디건 ") == sales.normalize("니트가디건")
-    assert sales.normalize("Wool Knit") == sales.normalize("woolknit")
-    assert sales.normalize(None) == ""
-
-
 def test_merge_with_catalog_fills_unsold_options_with_zero():
     catalog = [_product("가디건", "그레이", 0), _product("가디건", "블랙", 1)]
     merged = sales.merge_with_catalog(catalog, [_sold("가디건", "블랙", 3, order_count=2)])
@@ -72,33 +66,34 @@ def test_merge_with_catalog_appends_rows_missing_from_catalog():
     ]
 
 
-def test_filter_by_keyword_matches_partial_product_name():
-    rows = [_sold("니트 가디건", "그레이", 1), _sold("면 스커트", "단일", 2)]
+def test_product_names_dedupes_and_keeps_order():
+    rows = [
+        _sold("가디건", "그레이", 1),
+        _sold("가디건", "블랙", 2),
+        _sold("스커트", "단일", 3),
+    ]
 
-    assert [r.product_name for r in sales.filter_by_keyword(rows, "가디")] == ["니트 가디건"]
-    assert [r.product_name for r in sales.filter_by_keyword(rows, "니트가디건")] == ["니트 가디건"]
-    assert sales.filter_by_keyword(rows, "없는상품") == []
-
-
-def test_filter_by_keyword_returns_everything_when_blank():
-    rows = [_sold("가디건", "그레이", 1), _sold("스커트", "단일", 2)]
-
-    assert len(sales.filter_by_keyword(rows, "")) == 2
-    assert len(sales.filter_by_keyword(rows, "   ")) == 2
-    assert len(sales.filter_by_keyword(rows, None)) == 2
+    assert sales.product_names(rows) == ["가디건", "스커트"]
 
 
-def test_group_by_product_preserves_order_and_totals_quantity():
+def test_product_names_empty():
+    assert sales.product_names([]) == []
+
+
+def test_group_for_collects_options_and_totals_quantity():
     rows = [
         _sold("가디건", "그레이", 3),
-        _sold("가디건", "블랙", 4),
         _sold("스커트", "단일", 2),
+        _sold("가디건", "블랙", 4),
     ]
-    groups = sales.group_by_product(rows)
+    group = sales.group_for(rows, "가디건")
 
-    assert [g.product_name for g in groups] == ["가디건", "스커트"]
-    assert groups[0].total_quantity == 7
-    assert groups[1].total_quantity == 2
+    assert [r.option_name for r in group.rows] == ["그레이", "블랙"]
+    assert group.total_quantity == 7
+
+
+def test_group_for_returns_none_for_unknown_product():
+    assert sales.group_for([_sold("가디건", "그레이", 1)], "없는상품") is None
 
 
 def test_pending_quantities_sums_across_drafts():
