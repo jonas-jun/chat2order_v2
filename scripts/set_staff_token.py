@@ -15,6 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from core.links import normalize_base  # noqa: E402
 from core.settings import get_env  # noqa: E402
 
 
@@ -60,7 +61,7 @@ def main() -> int:
     conn.table("accounts").update({"staff_token": token}).eq("user_id", user_id).execute()
     print("staff_token 발급 완료:")
     print(f"  {token}")
-    base = get_env("LIVE_PUBLIC_URL", "").rstrip("/") or "(LIVE_PUBLIC_URL)"
+    base = normalize_base(get_env("LIVE_PUBLIC_URL")) or "(LIVE_PUBLIC_URL)"
     print("\n링크 예시:")
     print(f"  주문:  {base}/order?b=<broadcast_id>&t={token}")
     print(f"  검색:  {base}/search?t={token}")

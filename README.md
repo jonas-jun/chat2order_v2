@@ -6,7 +6,7 @@
 
 | 환경 | URL | 비고 |
 | --- | --- | --- |
-| 운영 | https://chat2order-live.up.railway.app | Railway 상시 가동. `LIVE_PUBLIC_URL` 과 같은 값 |
+| 운영 | https://chat2order-live.up.railway.app | Railway 상시 가동 |
 | 로컬 | http://localhost:8501 | 아래 "로컬 실행" 참고 |
 
 내비게이션 바는 숨겨져 있어 URL 로 직접 접근한다.
